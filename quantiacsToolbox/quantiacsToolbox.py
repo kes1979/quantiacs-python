@@ -1,8 +1,8 @@
+from __future__ import (print_function, absolute_import)
 import traceback
 import json
 import imp
-import urllib
-import urllib2
+import requests
 import webbrowser
 import re
 import datetime
@@ -11,7 +11,6 @@ import inspect
 import os
 import os.path
 import sys
-import ssl
 from copy import deepcopy
 
 import pandas as pd
@@ -23,9 +22,12 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib import style
 import matplotlib.pyplot as plt
 
-import Tkinter as tk
-import ttk
-
+try:
+    import tkinter as tk
+    from tkinter import ttk
+except ImportError:
+    import Tkinter as tk
+    import ttk
 
 def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None, endInSample=None, dataDir = 'tickerData'):
     ''' prepares and returns market data for specified markets.
@@ -33,7 +35,7 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
         prepares and returns related to the entries in the dataToLoad list. When refresh is true, data is updated from the Quantiacs server. If inSample is left as none, all available data dates will be returned.
 
         Args:
-            marketList (list): list of market data to be supplied
+            marketList (list): list of market data to be supplied. Non existing markets are removed from this list as a side-effect (left for backward compatibility).
             dataToLoad (list): list of financial data types to load
             refresh (bool): boolean value determining whether or not to update the local data from the Quantiacs server.
             beginInSample (str): a str in the format of YYYYMMDD defining the begining of the time series
@@ -45,7 +47,7 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
     Copyright Quantiacs LLC - March 2015
     '''
     if marketList is None:
-        print "warning: no markets supplied"
+        print("warning: no markets supplied")
         return
 
     dataToLoad = set(dataToLoad)
@@ -60,31 +62,24 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
     if not os.path.isdir(dataDir):
         os.mkdir(dataDir)
 
+    marketsToRemove = set()
     for j in range(nMarkets):
         path = os.path.join(dataDir, marketList[j]+'.txt')
 
         # check to see if market data is present. If not (or refresh is true), download data from quantiacs.
         if not os.path.isfile(path) or refresh:
-            try:
-                if False: #sys.version_info > (2,7,9):
-                    gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-                    data = urllib.urlopen('https://www.quantiacs.com/data/' +
-                                          marketList[j]+'.txt',
-                                          context=gcontext).read()
-                else:
-                    data = urllib.urlopen('https://www.quantiacs.com/data/' +
-                                          marketList[j]+'.txt').read()
-                with open(path, 'w') as dataFile:
-                    dataFile.write(data)
-                print 'Downloading ' + marketList[j]
+            resp = requests.get("https://www.quantiacs.com/data/" + marketList[j] + ".txt", timeout=30)
+            if resp.status_code == requests.codes.ok:
+                with open(path, 'wb') as dataFile:
+                    dataFile.write(resp.content)
+                print("Downloaded", marketList[j])
+            else:
+                print("Unable to download", marketList[j])
+                marketsToRemove.add(marketList[j])
 
-            except:
-                print 'Unable to download ' + marketList[j]
-                marketList.remove(marketList[j])
-            finally:
-                dataFile.close()
+    marketList[:] = [s for s in marketList if s not in marketsToRemove]
 
-    print 'Loading Data...'
+    print("Loading Data...")
     sys.stdout.flush()
     dataDict = {}
     largeDateRange = range(datetime.datetime(1990, 1, 1).toordinal(),
@@ -96,9 +91,9 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
     for i, market in enumerate(marketList):
         marketFile = os.path.join('tickerData', market+'.txt')
         data = pd.read_csv(marketFile, engine='c')
-        data.columns = map(str.strip, data.columns)
+        data.columns = [i.strip() for i in data.columns]
         fieldNames.update(list(data.columns.values))
-        data.set_index('DATE', inplace=True)    
+        data.set_index('DATE', inplace=True)
         data['DATE'] = data.index
 
         for j, dataType in enumerate(dataToLoad):
@@ -121,28 +116,19 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
         filePath = os.path.join('tickerData', additionData + '.txt')
         # check to see if data is present. If not (or refresh is true), download data from quantiacs.
         if not os.path.isfile(filePath) or refresh:
-            try:
-                if False: #sys.version_info > (2,7,9):
-                    gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-                    data = urllib.urlopen('https://www.quantiacs.com/data/' +
-                                          additionData+'.txt',
-                                          context=gcontext).read()
-                else:
-                    data = urllib.urlopen('https://www.quantiacs.com/data/' +
-                                          additionData+'.txt').read()
-                with open(filePath, 'w') as dataFile:
-                    dataFile.write(data)
-                print 'Downloading ' + additionData
-            except:
-                print 'Unable to download ' + additionData
+            resp = requests.get("https://www.quantiacs.com/data/" + additionData + ".txt", timeout=30)
+            if resp.status_code == requests.codes.ok:
+                with open(filePath, 'wb') as dataFile:
+                    dataFile.write(resp.content)
+                print("Downloaded", additionData)
+            else:
+                print("Unable to download", additionData)
                 additionDataFailed.add(additionData)
                 continue
-            finally:
-                dataFile.close()
 
         # read data from text file and load to memory
         data = pd.read_csv(filePath, engine='c')
-        data.columns = map(str.strip, data.columns)
+        data.columns = [i.strip() for i in data.columns]
         data.set_index('DATE', inplace=True)
         data['DATE'] = data.index
         for j, column in enumerate(data.columns):
@@ -196,9 +182,8 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
 
     dataDict['OPEN'], dataDict['HIGH'], dataDict['LOW'] = fillwith(dataDict['OPEN'],dataDict['CLOSE']), fillwith(dataDict['HIGH'],dataDict['CLOSE']), fillwith(dataDict['LOW'],dataDict['CLOSE'])
 
-    print '\bDone! \n',
+    print("Done!")
     sys.stdout.flush()
-
     return dataDict
 
 
@@ -263,21 +248,21 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
         try:
             TSobject = imp.load_source('tradingSystemModule', filePath)
         except Exception as e:
-            print 'Error loading trading system'
-            print str(e)
-            print traceback.format_exc()
+            print("Error loading trading system")
+            print(e)
+            print(traceback.format_exc())
             return
 
         try:
             settings = TSobject.mySettings()
         except Exception as e:
-            print "Unable to load settings. Please ensure your settings definition is correct"
-            print str(e)
-            print traceback.format_exc()
+            print("Unable to load settings. Please ensure your settings definition is correct")
+            print(e)
+            print(traceback.format_exc())
             return
 
     else:
-        print "Please input your trading system's file path or a callable object."
+        print("Please input your trading system's file path or a callable object.")
         return
 
     if isinstance(state, dict):
@@ -288,10 +273,11 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
         if 'runtimeInterrupt' not in state:
             state['runtimeInterrupt'] = False
     else:
-        print 'state variable is not a dict'
+        print("state variable is not a dict")
 
     # get boolean index of futures
-    futuresIx = np.array(map(lambda string:bool(re.match("F_",string)),settings['markets']))
+    futuresIx = np.array([bool(re.match("F_",string)) for string in settings['markets']])
+
 
     # get data fields and extract them.
     requiredData = set(['DATE','OPEN','HIGH', 'LOW', 'CLOSE', 'P','RINFO','p'])
@@ -320,11 +306,11 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
         settingsCache = deepcopy(settings)
 
     else:
-        print 'copying data from cache'
+        print("copying data from cache")
         settings= deepcopy(settingsCache)
         dataDict = deepcopy(dataCache)
 
-    print 'Evaluating Trading System'
+    print("Evaluating Trading System")
 
     nMarkets=len(settings['markets'])
     endLoop=len(dataDict['DATE'])
@@ -347,7 +333,7 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
     gaps=np.nan_to_num(fillnans(gapsTemp))
 
     # check if a default slippage is specified
-    if False == settings.has_key('slippage'):
+    if "slippage" not in settings:
         settings['slippage'] = 0.05
 
     slippageTemp = np.append(np.empty((1,nMarkets))*np.nan, ((dataDict['HIGH'][1:,:] - dataDict['LOW'][1:,:]) / dataDict['CLOSE'][:-1,:] ), axis=0) * settings['slippage']
@@ -373,7 +359,7 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
             startLoop = np.shape(state['evalData']['fundDate'])[0]
             endLoop = np.shape(dataDict['DATE'])[0]
 
-            print('Resuming'+tsName+' | computing '+str(endLoop-startLoop+1)+' new days')
+            print("Resuming", tsName, "| computing", endLoop - startLoop + 1, "new days")
             settings= evalData['settings']
 
     t0= time.time()
@@ -417,9 +403,9 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
 
             position, settings= TSobject.myTradingSystem(*argList)
         except:
-            print 'Error evaluating trading system'
-            print sys.exc_info()[0]
-            print traceback.format_exc()
+            print("Error evaluating trading system")
+            print(sys.exc_info()[0])
+            print(traceback.format_exc())
             errorlog.append(str(dataDict['DATE'][t])+ ': ' + str(sys.exc_info()[0]))
             dataDict['equity'][t:,:] = np.tile(dataDict['equity'][t,:],(endLoop-t,1))
             return
@@ -452,7 +438,7 @@ def runts(tradingSystem, plotEquity=True, reloadData=False, state={}, sourceData
     ret['returns'] = np.nan_to_num(returns).tolist()
 
     if errorlog:
-        print 'Error: {}'.format(errorlog)
+        print("Error: {}".format(errorlog))
 
     if plotEquity:
         statistics = stats(fundequity)
@@ -913,7 +899,7 @@ def submit(tradingSystem, tsName):
         returns True if upload was successful, False otherwise.
 
     '''
-    from version import __version__
+    from .version import __version__
 
 
     if os.path.isfile(tradingSystem) and os.access(tradingSystem, os.R_OK):
@@ -922,34 +908,24 @@ def submit(tradingSystem, tsName):
         fileFolder, fileName=os.path.split(filePath)
 
     else:
-        print "Please input the your trading system's file path."
+        print("Please input the your trading system's file path.")
 
     toolboxPath=os.path.realpath(__file__)
     toolboxDir,Nothing=os.path.split(toolboxPath)
 
-    print "Submitting File..."
+    print("Submitting File...")
     fid=open(filePath)
     fileText=fid.read()
     fid.close()
 
-    if sys.version_info > (2,7,9):
-        uploadContext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-        submissionUrl='https://www.quantiacs.com/quantnetsite/UploadTradingSystem.aspx'
-        data=urllib.urlencode({'fileName':fileName[:-3],'name':tsName,'data':fileText, 'version':__version__})
-        req = urllib2.Request(submissionUrl, data)
-        guid= urllib2.urlopen(req, context = uploadContext)
+    resp = requests.post("https://www.quantiacs.com/quantnetsite/UploadTradingSystem.aspx",
+                         data={"fileName": fileName[:-3], "name": tsName, "data": fileText, "version": __version__},
+                         timeout=30)
+    if resp.status_code == requests.codes.ok:
+        webbrowser.open_new_tab('https://www.quantiacs.com/quantnetsite/UploadSuccess.aspx?guid=' + str(resp.text))
     else:
-        submissionUrl='http://www.quantiacs.com/quantnetsite/UploadTradingSystem.aspx'
-        data=urllib.urlencode({'fileName':fileName[:-3],'name':tsName,'data':fileText, 'version':__version__})
-        req = urllib2.Request(submissionUrl, data)
-        guid= urllib2.urlopen(req,)
+        print("Could not submit trading system. Response code", resp.status_code)
 
-
-    successPage = guid.read()
-
-    webbrowser.open_new_tab('https://www.quantiacs.com/quantnetsite/UploadSuccess.aspx?guid='+str(successPage))
-
-#    return True
 def computeFees(equityCurve, managementFee,performanceFee):
     ''' computes equity curve after fees
 
@@ -969,7 +945,7 @@ def computeFees(equityCurve, managementFee,performanceFee):
     firstTradeDayRow = np.where(tradeDays is True)
     firstTradeDay = firstTradeDayRow[0][0]
 
-    manFeeIx = np.zeros(np.shape(ret),dtype=bool)
+    manFeeIx = np.zeros(np.shape(ret), dtype=bool)
     manFeeIx[firstTradeDay:] = 1
     ret[manFeeIx] = ret[manFeeIx] - managementFee/252
 
@@ -1062,16 +1038,16 @@ def updateCheck():
         returns False if version is the same
     '''
 
-    from version import __version__
-    updateStr = ''
+    from .version import __version__
+
     try:
-        toolboxJson = urllib.urlopen('https://pypi.python.org/pypi/quantiacsToolbox/json')
+        resp = requests.get("https://pypi.python.org/pypi/quantiacsToolbox/json", timeout=30)
+        if resp.status_code == requests.codes.ok:
+            if __version__ != resp.json()['info']['version']:
+                return True
     except Exception as e:
-        return False
+        pass
+    return False
 
-    toolboxDict = json.loads(toolboxJson.read())
-
-    if __version__ != toolboxDict['info']['version']:
-        return True
-    else:
-        return False
+if __name__ == "__main__":
+    pass
