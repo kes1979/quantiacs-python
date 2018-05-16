@@ -1,6 +1,5 @@
-import pip
-moduleList = [i.key for i in pip.get_installed_distributions()]
+import pkg_resources
+moduleList = [i.key for i in pkg_resources.working_set]
 
 if 'quantiacstoolbox' in moduleList:
-    from .quantiacsToolbox import runts, loadData, plotts, stats, submit, computeFees, updateCheck
-##
+    from .quantiacsToolbox import runts, loadData, plotts, stats, submit, computeFees, updateCheck, optimize
