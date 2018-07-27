@@ -184,10 +184,9 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
     else:
         dataDict['DATE'] = dataDict['CLOSE'].loc[beginInSampleInt:, :].index.values
 
-    for index, dataType in enumerate(dataToLoad):
+    for dataType in dataToLoad:
         if dataType != 'DATE' and dataType in dataDict:
-            dataDict[dataType] = dataDict[dataType].loc[dataDict['DATE'], :]
-            dataDict[dataType] = dataDict[dataType].values
+            dataDict[dataType] = dataDict[dataType].loc[dataDict['DATE'], :].values
 
     if 'VOL' in dataDict:
         dataDict['VOL'][np.isnan(dataDict['VOL'].astype(float))] = 0.0
@@ -202,9 +201,9 @@ def loadData(marketList=None, dataToLoad=None, refresh=False, beginInSample=None
         dataDict['P'][np.isnan(dataDict['P'].astype(float))] = 0.0
 
     dataDict['CLOSE'] = fillnans(dataDict['CLOSE'])
-
-    dataDict['OPEN'], dataDict['HIGH'], dataDict['LOW'] = fillwith(dataDict['OPEN'], dataDict['CLOSE']), fillwith(
-        dataDict['HIGH'], dataDict['CLOSE']), fillwith(dataDict['LOW'], dataDict['CLOSE'])
+    dataDict['OPEN'] = fillwith(dataDict['OPEN'], dataDict['CLOSE'])
+    dataDict['HIGH'] = fillwith(dataDict['HIGH'], dataDict['CLOSE'])
+    dataDict['LOW'] = fillwith(dataDict['LOW'], dataDict['CLOSE'])
 
     print("Done!")
     sys.stdout.flush()
