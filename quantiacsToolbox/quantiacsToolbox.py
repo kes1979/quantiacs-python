@@ -1274,14 +1274,21 @@ def stats(equityCurve):
 
     returnDaily = np.exp(np.log(indexEnd) / returns.shape[0]) - 1
     returnYearly = (1 + returnDaily) ** 252 - 1
-    sharpeRatio = returnYearly / volaYearly
+
+    if 0.0 != volaYearly:
+        sharpeRatio = returnYearly / volaYearly
+    else:
+        sharpeRatio = np.NaN
 
     downsideReturns = returns.copy()
     downsideReturns[downsideReturns > 0] = 0
     downsideVola = np.std(downsideReturns)
     downsideVolaYearly = downsideVola * np.sqrt(252)
 
-    sortino = returnYearly / downsideVolaYearly
+    if 0.0 != downsideVolaYearly:
+        sortino = returnYearly / downsideVolaYearly
+    else:
+        sortino = np.NaN
 
     highCurve = equityCurve.copy()
 
@@ -1310,7 +1317,10 @@ def stats(equityCurve):
         #        highList.tolist()
         #        mX= highList[0:mIx].index(np.max(highList[0:mIx]))
         mX = mX[0][0]
-        mar = returnYearly / maxDD
+        if 0.0 != maxDD:
+            mar  = returnYearly / maxDD
+        else:
+            mar = np.NaN
 
         mToP = equityCurve < highCurve
         mToP = np.insert(mToP, [0, len(mToP)], False)
