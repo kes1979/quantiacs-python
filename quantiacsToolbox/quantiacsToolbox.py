@@ -1389,6 +1389,8 @@ def submit(tradingSystem, tsName):
     fid = open(filePath)
     fileText = fid.read()
     fid.close()
+    if PY3:
+        fileText += "#__PYTHON__VERSION__3"
 
     resp = requests.post("https://www.quantiacs.com/quantnetsite/UploadTradingSystem.aspx",
                          data={"fileName": fileName[:-3], "name": tsName, "data": fileText, "version": __version__},
